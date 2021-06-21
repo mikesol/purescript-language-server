@@ -484,7 +484,7 @@ getAllDeclarations s = case parseModule s of
   ParseFailed _ -> List.Nil
 
 replaceSingleDeclaration :: String -> String -> String
-replaceSingleDeclaration toReplace body = either (const body) identity do
+replaceSingleDeclaration body toReplace = either (const body) identity do
   rx <- Regex.regex ("(?<![a-zA-Z0-9_']+)(" <> toReplace <> ")(?![a-zA-Z0-9_']+)") noFlags
   pure $ Regex.replace rx (toReplace <> "___w4g") body
 
@@ -526,11 +526,12 @@ rebuildGopher engineUri waggedUri gopherUri = do
   writeFile gopherUri
     $ intercalate "\n"
       [ "module Gopher where"
+      , "import Hack(cont___w444g)"
       , engineHead
       , waggedHead
       , engineBody
       , waggedBody
-      , "cont = cont' graph___w4g control graph"
+      , "w_4_4_gg_ = cont___w444g graph___w4g control graph"
       ]
 
 -- | Puts event handlers
