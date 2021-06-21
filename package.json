@@ -29,6 +29,7 @@
     "server.js"
   ],
   "dependencies": {
+    "file-uri-to-path": "^2.0.0",
     "shell-quote": "^1.7.2",
     "uuid": "^3.3.2",
     "vscode-languageserver": "^6.1.1",
