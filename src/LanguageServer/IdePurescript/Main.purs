@@ -8,7 +8,7 @@ import Control.Promise as Promise
 import Data.Array (length, (!!), (\\))
 import Data.Array as Array
 import Data.Either (Either(..), either)
-import Data.Foldable (for_, intercalate, or, sequence_)
+import Data.Foldable (for_, foldl, intercalate, or, sequence_)
 import Data.List as List
 import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe, maybe')
 import Data.Newtype (over, un, unwrap)
@@ -52,7 +52,7 @@ import LanguageServer.IdePurescript.Symbols (getDefinition, getDocumentSymbols, 
 import LanguageServer.IdePurescript.Tooltips (getTooltips)
 import LanguageServer.IdePurescript.Types (ServerState(..), CommandHandler)
 import LanguageServer.Setup (InitParams(..), getConfiguration, initConnection, initDocumentStore)
-import LanguageServer.TextDocument (TextDocument, getText, getUri)
+import LanguageServer.TextDocument (getText, getUri)
 import LanguageServer.Types (Connection, Diagnostic, DocumentStore, DocumentUri(..), FileChangeType(..), FileChangeTypeCode(..), FileEvent(..), Settings, TextDocumentIdentifier(..), intToFileChangeType)
 import LanguageServer.Uri (filenameToUri, uriToFilename)
 import LanguageServer.Window (showError, showWarningWithActions)
@@ -428,7 +428,7 @@ type HeadAndBody = { head :: List.List String, body :: List.List String }
 headAndBody :: String -> HeadAndBody
 headAndBody s = go List.Nil split
   where
-  split = List.fromFoldable $ String.split s
+  split = List.fromFoldable $ String.split (String.Pattern "\n") s
   go :: List.List String -> List.List String -> HeadAndBody
   go head List.Nil = { head, body: List.Nil }
   go head (List.Cons a b)
@@ -441,8 +441,13 @@ removeModuleDeclaration = List.filter (\s -> String.take 6 s /= "module")
 getAllDeclarations :: List.List String -> List.List String
 getAllDeclarations body = ?hole
 
+replaceSingleDeclaration :: String -> String -> String
+replaceSingleDeclaration toReplace line = ?hole
+
+-- | Takes a list of terms to replace and a list of lines containing those terms
+-- | and returns the lines with the replacements.
 replaceAllDeclarations :: List.List String -> List.List String -> List.List String
-replaceAllDeclarations allDeclarations body = ?hole
+replaceAllDeclarations = map <<< flip (foldl replaceSingleDeclaration)
 
 type MangledEngine = { engineHead :: String, engineBody :: String }
 
@@ -450,17 +455,18 @@ mangleEngine :: String -> MangledEngine
 mangleEngine s = { engineHead, engineBody }
   where
   { head, body } = headAndBody s
-  engineHead = removeModuleDeclaration head
+  engineHead = intercalate "\n" (removeModuleDeclaration head)
   allDeclarations = getAllDeclarations body
-  engineBody = replaceAllDeclarations allDeclarations body
+  engineBody = intercalate "\n" (replaceAllDeclarations allDeclarations body)
 
 type MangledWagged = { waggedHead :: String, waggedBody :: String }
 
 mangleWagged :: String -> MangledWagged
 mangleWagged s = { waggedHead, waggedBody }
   where
-  { head, body: waggedBody } = headAndBody s
-  waggedHead = removeModuleDeclaration head
+  { head, body } = headAndBody s
+  waggedHead = intercalate "\n" (removeModuleDeclaration head)
+  waggedBody = intercalate "\n" body
 
 -- | Rebuilds the gopher, which is the actual file used for audio rendering
 rebuildGopher ::
@@ -555,12 +561,12 @@ handleEvents config conn state documents logError = do
           })) state
 
   onDidSaveDocument documents \{ document } -> launchAffLog do
-    let (DocumentUri uri) = getUri document
+    let uri@(DocumentUri uriPath) = getUri document
     rebuildAndSendDiagnostics config conn state logError uri
-    for_ (String.indexOf (String.Pattern "Wagged.purs") uri) \idx -> do
+    for_ (String.indexOf (String.Pattern "Wagged.purs") uriPath) \idx -> do
         liftEffect $ info conn "recompiling engine and gopher"
         let
-          pathToFile = String.take idx uri
+          pathToFile = String.take idx uriPath
           engineUri = DocumentUri (pathToFile <> "Engine.purs")
           gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
         rebuildAndSendDiagnostics config conn state logError engineUri
