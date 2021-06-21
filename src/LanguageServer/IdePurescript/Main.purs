@@ -10,6 +10,7 @@ import Data.Array as Array
 import Data.Either (Either(..), either)
 import Data.Foldable (for_, foldl, intercalate, or, sequence_)
 import Data.List as List
+import Data.Set as Set
 import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe, maybe')
 import Data.Newtype (over, un, unwrap)
 import Data.Nullable (toMaybe, toNullable)
@@ -438,8 +439,27 @@ headAndBody s = go List.Nil split
 removeModuleDeclaration :: List.List String -> List.List String
 removeModuleDeclaration = List.filter (\s -> String.take 6 s /= "module")
 
+getTermDeclarations :: List.List String -> List.List String
+getTermDeclarations l = ?hole
+
+getTypeDeclarations :: List.List String -> List.List String
+getTypeDeclarations l = ?hole
+
+getDataDeclarations :: List.List String -> List.List String
+getDataDeclarations l = ?hole
+
+getNewtypeDeclarations :: List.List String -> List.List String
+getNewtypeDeclarations l = ?hole
+
+
 getAllDeclarations :: List.List String -> List.List String
-getAllDeclarations body = ?hole
+getAllDeclarations =
+  List.fromFoldable
+  <<< Set.fromFoldable
+  <<< getTermDeclarations
+  <<< getTypeDeclarations
+  <<< getDataDeclarations
+  <<< getNewtypeDeclarations
 
 replaceSingleDeclaration :: String -> String -> String
 replaceSingleDeclaration toReplace line = ?hole
