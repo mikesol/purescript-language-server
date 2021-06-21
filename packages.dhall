@@ -119,8 +119,36 @@ let additions =
 let upstream =
       https://github.com/purescript/package-sets/releases/download/psc-0.14.1-20210516/packages.dhall sha256:f5e978371d4cdc4b916add9011021509c8d869f4c3f6d0d2694c0e03a85046c8
 
-let overrides = { psc-ide = upstream.psc-ide // { version = "b9b1d0320204927cafefcf24b105ec03d0ae256b" } }
+let overrides =
+      { psc-ide =
+              upstream.psc-ide
+          //  { version = "b9b1d0320204927cafefcf24b105ec03d0ae256b" }
+      }
 
-let additions = {=}
+let additions =
+      { language-cst-parser =
+        { dependencies =
+          [ "arrays"
+          , "console"
+          , "const"
+          , "debug"
+          , "effect"
+          , "either"
+          , "filterable"
+          , "foldable-traversable"
+          , "free"
+          , "functors"
+          , "maybe"
+          , "numbers"
+          , "psci-support"
+          , "strings"
+          , "transformers"
+          , "tuples"
+          , "typelevel-prelude"
+          ]
+        , repo = "https://github.com/natefaubion/purescript-language-cst-parser"
+        , version = "v0.7.1"
+        }
+      }
 
 in  upstream // overrides // additions

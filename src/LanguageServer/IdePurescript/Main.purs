@@ -7,18 +7,20 @@ import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Array (length, (!!), (\\))
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..), either)
 import Data.Foldable (for_, foldl, intercalate, or, sequence_)
 import Data.List as List
-import Data.Set as Set
 import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe, maybe')
 import Data.Newtype (over, un, unwrap)
 import Data.Nullable (toMaybe, toNullable)
 import Data.Profunctor.Strong (first)
 import Data.String (Pattern(..), contains)
 import Data.String as String
+import Data.String.Regex as Regex
+import Data.String.Regex.Flags (noFlags)
 import Data.Traversable (traverse)
-import Data.Tuple (Tuple(..))
+import Data.Tuple (Tuple(..), snd)
 import Effect (Effect)
 import Effect.Aff (Aff, Milliseconds(..), apathize, attempt, delay, forkAff, launchAff_, runAff_, try)
 import Effect.Aff.AVar (AVar)
@@ -63,6 +65,8 @@ import Node.FS.Sync as FSSync
 import Node.Path (resolve)
 import Node.Process as Process
 import PscIde.Command (RebuildError(..))
+import PureScript.CST (RecoveredParserResult(..), parseModule)
+import PureScript.CST.Types as CST
 
 defaultServerState :: ServerState
 defaultServerState = ServerState
@@ -439,35 +443,55 @@ headAndBody s = go List.Nil split
 removeModuleDeclaration :: List.List String -> List.List String
 removeModuleDeclaration = List.filter (\s -> String.take 6 s /= "module")
 
-getTermDeclarations :: List.List String -> List.List String
-getTermDeclarations l = ?hole
+nameProperToString :: CST.Name CST.Proper -> String
+nameProperToString (CST.Name { name: CST.Proper s }) = s
 
-getTypeDeclarations :: List.List String -> List.List String
-getTypeDeclarations l = ?hole
+nameIdentToString :: CST.Name CST.Ident -> String
+nameIdentToString (CST.Name { name: CST.Ident s }) = s
 
-getDataDeclarations :: List.List String -> List.List String
-getDataDeclarations l = ?hole
+dataCtorToNameProper :: forall e. CST.DataCtor e -> CST.Name CST.Proper
+dataCtorToNameProper = _.name <<< unwrap
 
-getNewtypeDeclarations :: List.List String -> List.List String
-getNewtypeDeclarations l = ?hole
+instanceToString :: forall e. CST.Instance e -> String
+instanceToString (CST.Instance { head: { name }}) = nameIdentToString name
 
+declToTokens :: forall e. CST.Declaration e -> Array String
+declToTokens = case _ of
+  CST.DeclData { name } Nothing ->  map nameProperToString [name]
+  CST.DeclData { name } (Just (Tuple _ (CST.Separated { head, tail }))) -> map nameProperToString ([name] <> map dataCtorToNameProper ([head] <> map snd tail))
+  CST.DeclType { name } _ _ -> map nameProperToString [name]
+  CST.DeclNewtype { name } _ np _ -> map nameProperToString [name, np]
+  CST.DeclClass { name } Nothing -> map nameProperToString [name]
+  CST.DeclClass { name } (Just (Tuple _ nea)) -> map nameProperToString [name] <> map nameIdentToString (NonEmptyArray.toArray (map (_.label <<< unwrap) nea))
+  CST.DeclInstanceChain (CST.Separated { head, tail }) -> map instanceToString ([head] <> map snd tail)
+  CST.DeclDerive _ _ _ -> []
+  CST.DeclKindSignature _ (CST.Labeled { label }) -> map nameProperToString [label]
+  CST.DeclSignature (CST.Labeled { label }) -> map nameIdentToString [label]
+  CST.DeclValue ({ name }) -> map nameIdentToString [name]
+  CST.DeclFixity _ -> [] -- can't do infix yet...
+  CST.DeclForeign _ _ _ -> [] -- can't do foreign yet...
+  CST.DeclRole _ _ _ _ -> [] -- can't do role yet
+  CST.DeclError e -> [] -- can't do error yet
 
-getAllDeclarations :: List.List String -> List.List String
-getAllDeclarations =
-  List.fromFoldable
-  <<< Set.fromFoldable
-  <<< getTermDeclarations
-  <<< getTypeDeclarations
-  <<< getDataDeclarations
-  <<< getNewtypeDeclarations
+moduleToDeclarations :: forall e. CST.Module e -> List.List String
+moduleToDeclarations (CST.Module { header, body: CST.ModuleBody { decls } }) = List.fromFoldable $ join (map declToTokens decls)
+
+-- todo: make failure smarter?
+getAllDeclarations :: String -> List.List String
+getAllDeclarations s = case parseModule s of
+  ParseSucceeded cst -> moduleToDeclarations cst
+  ParseSucceededWithErrors cst _ -> moduleToDeclarations cst
+  ParseFailed _ -> List.Nil
 
 replaceSingleDeclaration :: String -> String -> String
-replaceSingleDeclaration toReplace line = ?hole
+replaceSingleDeclaration toReplace body = either (const body) identity do
+  rx <- Regex.regex ("(?<![a-zA-Z0-9_']+)(" <> toReplace <> ")(?![a-zA-Z0-9_']+)") noFlags
+  pure $ Regex.replace rx (toReplace <> "___w4g") body
 
 -- | Takes a list of terms to replace and a list of lines containing those terms
 -- | and returns the lines with the replacements.
-replaceAllDeclarations :: List.List String -> List.List String -> List.List String
-replaceAllDeclarations = map <<< flip (foldl replaceSingleDeclaration)
+replaceAllDeclarations :: String -> List.List String -> String
+replaceAllDeclarations = foldl replaceSingleDeclaration
 
 type MangledEngine = { engineHead :: String, engineBody :: String }
 
@@ -476,8 +500,8 @@ mangleEngine s = { engineHead, engineBody }
   where
   { head, body } = headAndBody s
   engineHead = intercalate "\n" (removeModuleDeclaration head)
-  allDeclarations = getAllDeclarations body
-  engineBody = intercalate "\n" (replaceAllDeclarations allDeclarations body)
+  allDeclarations = getAllDeclarations s
+  engineBody = replaceAllDeclarations (intercalate "\n" body) allDeclarations
 
 type MangledWagged = { waggedHead :: String, waggedBody :: String }
 
