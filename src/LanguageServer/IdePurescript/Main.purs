@@ -531,7 +531,7 @@ rebuildGopher engineUri waggedUri gopherUri = do
       , waggedHead
       , engineBody
       , waggedBody
-      , "w_4_4_gg_ = cont___w444g graph___w4g control graph"
+      , "w_4_4_gg_ = cont___w444g graph___w4g wagsi"
       ]
 
 -- | Puts event handlers
