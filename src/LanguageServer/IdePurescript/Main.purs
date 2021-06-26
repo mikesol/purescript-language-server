@@ -615,7 +615,7 @@ handleEvents config conn state documents logError = do
           engineUri = DocumentUri (pathToFile <> "Engine.purs")
           gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
         rebuildAndSendDiagnostics config conn state logError engineUri
-        liftEffect $ info conn "WAGS :: Recompiling Gopher"
+        liftEffect $ info conn ("WAGS :: Recompiling Gopher" <> show uri <> " " <> show gopherUri)
         rebuildGopher engineUri uri gopherUri
         rebuildAndSendDiagnostics config conn state logError gopherUri
 
