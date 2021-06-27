@@ -3,6 +3,7 @@ module LanguageServer.IdePurescript.Main (main) where
 import Prelude
 
 import Control.Monad.Except (runExcept)
+import Data.String.Utils (lines)
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Array (length, (!!), (\\))
@@ -433,7 +434,7 @@ type HeadAndBody = { head :: List.List String, body :: List.List String }
 headAndBody :: String -> HeadAndBody
 headAndBody s = go List.Nil split
   where
-  split = List.fromFoldable $ String.split (String.Pattern "\n") s
+  split = List.fromFoldable $ lines s
   go :: List.List String -> List.List String -> HeadAndBody
   go head List.Nil = { head, body: List.Nil }
   go head (List.Cons a b)
@@ -531,7 +532,7 @@ rebuildGopher engineUri waggedUri gopherUri = do
       , waggedHead
       , engineBody
       , waggedBody
-      , "w_4_4_gg_ = cont___w444g graph___w4g wagsi"
+      , "w_4_4_gg_ = cont___w444g wagsi___w4g wagsi"
       ]
 
 -- | Puts event handlers
@@ -615,7 +616,7 @@ handleEvents config conn state documents logError = do
           engineUri = DocumentUri (pathToFile <> "Engine.purs")
           gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
         rebuildAndSendDiagnostics config conn state logError engineUri
-        liftEffect $ info conn ("WAGS :: Recompiling Gopher" <> show uri <> " " <> show gopherUri)
+        liftEffect $ info conn ("WAGS :: Recompiling Gopher" <> " " <> show uri <> " " <> show gopherUri)
         rebuildGopher engineUri uri gopherUri
         rebuildAndSendDiagnostics config conn state logError gopherUri
 
