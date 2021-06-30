@@ -9,7 +9,7 @@ import Data.Array (length, (!!), (\\))
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..), either)
-import Data.Foldable (for_, foldl, intercalate, or, sequence_)
+import Data.Foldable (for_, fold, foldl, intercalate, or, sequence_)
 import Data.List as List
 import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe, maybe')
 import Data.Newtype (over, un, unwrap)
@@ -19,10 +19,10 @@ import Data.String (Pattern(..), contains)
 import Data.String as String
 import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
-import Data.Traversable (traverse)
+import Data.Traversable (sequence, traverse)
 import Data.Tuple (Tuple(..), snd)
 import Effect (Effect)
-import Effect.Aff (Aff, Milliseconds(..), apathize, attempt, delay, forkAff, launchAff_, runAff_, try)
+import Effect.Aff (Aff, Milliseconds(..), apathize, attempt, delay, forkAff, joinFiber, launchAff_, runAff_, try)
 import Effect.Aff.AVar (AVar)
 import Effect.Aff.AVar as AVar
 import Effect.Class (class MonadEffect, liftEffect)
@@ -607,17 +607,19 @@ handleEvents config conn state documents logError = do
 
   onDidSaveDocument documents \{ document } -> launchAffLog do
     let uri@(DocumentUri uriPath) = getUri document
-    rebuildAndSendDiagnostics config conn state logError uri
-    for_ (String.indexOf (String.Pattern "Wagged.purs") uriPath) \idx -> do
-        liftEffect $ info conn "recompiling engine and gopher"
+    
+    maybe
+      (rebuildAndSendDiagnostics config conn state logError uri)
+      (\idx -> do
         let
           pathToFile = String.take idx uriPath
           engineUri = DocumentUri (pathToFile <> "Engine.purs")
           gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
-        rebuildAndSendDiagnostics config conn state logError engineUri
         liftEffect $ info conn "WAGS :: Recompiling Gopher"
         rebuildGopher engineUri uri gopherUri
-        rebuildAndSendDiagnostics config conn state logError gopherUri
+        rebuildAndSendDiagnostics config conn state logError uri
+        rebuildAndSendDiagnostics config conn state logError gopherUri)
+      (String.indexOf (String.Pattern "Wagged.purs") uriPath)
 
 handleConfig ::
   Ref Foreign ->
