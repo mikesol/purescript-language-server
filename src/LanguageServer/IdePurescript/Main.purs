@@ -18,7 +18,8 @@ import Data.Profunctor.Strong (first)
 import Data.String (Pattern(..), contains)
 import Data.String as String
 import Data.String.Regex as Regex
-import Data.String.Regex.Flags (noFlags)
+import Data.String.Regex.Flags (global, noFlags)
+import Data.String.Utils (lines)
 import Data.Traversable (sequence, traverse)
 import Data.Tuple (Tuple(..), snd)
 import Effect (Effect)
@@ -433,7 +434,7 @@ type HeadAndBody = { head :: List.List String, body :: List.List String }
 headAndBody :: String -> HeadAndBody
 headAndBody s = go List.Nil split
   where
-  split = List.fromFoldable $ String.split (String.Pattern "\n") s
+  split = List.fromFoldable $ lines s
   go :: List.List String -> List.List String -> HeadAndBody
   go head List.Nil = { head, body: List.Nil }
   go head (List.Cons a b)
@@ -442,66 +443,6 @@ headAndBody s = go List.Nil split
 
 removeModuleDeclaration :: List.List String -> List.List String
 removeModuleDeclaration = List.filter (\s -> String.take 6 s /= "module")
-
-nameProperToString :: CST.Name CST.Proper -> String
-nameProperToString (CST.Name { name: CST.Proper s }) = s
-
-nameIdentToString :: CST.Name CST.Ident -> String
-nameIdentToString (CST.Name { name: CST.Ident s }) = s
-
-dataCtorToNameProper :: forall e. CST.DataCtor e -> CST.Name CST.Proper
-dataCtorToNameProper = _.name <<< unwrap
-
-instanceToString :: forall e. CST.Instance e -> String
-instanceToString (CST.Instance { head: { name }}) = nameIdentToString name
-
-declToTokens :: forall e. CST.Declaration e -> Array String
-declToTokens = case _ of
-  CST.DeclData { name } Nothing ->  map nameProperToString [name]
-  CST.DeclData { name } (Just (Tuple _ (CST.Separated { head, tail }))) -> map nameProperToString ([name] <> map dataCtorToNameProper ([head] <> map snd tail))
-  CST.DeclType { name } _ _ -> map nameProperToString [name]
-  CST.DeclNewtype { name } _ np _ -> map nameProperToString [name, np]
-  CST.DeclClass { name } Nothing -> map nameProperToString [name]
-  CST.DeclClass { name } (Just (Tuple _ nea)) -> map nameProperToString [name] <> map nameIdentToString (NonEmptyArray.toArray (map (_.label <<< unwrap) nea))
-  CST.DeclInstanceChain (CST.Separated { head, tail }) -> map instanceToString ([head] <> map snd tail)
-  CST.DeclDerive _ _ _ -> []
-  CST.DeclKindSignature _ (CST.Labeled { label }) -> map nameProperToString [label]
-  CST.DeclSignature (CST.Labeled { label }) -> map nameIdentToString [label]
-  CST.DeclValue ({ name }) -> map nameIdentToString [name]
-  CST.DeclFixity _ -> [] -- can't do infix yet...
-  CST.DeclForeign _ _ _ -> [] -- can't do foreign yet...
-  CST.DeclRole _ _ _ _ -> [] -- can't do role yet
-  CST.DeclError e -> [] -- can't do error yet
-
-moduleToDeclarations :: forall e. CST.Module e -> List.List String
-moduleToDeclarations (CST.Module { header, body: CST.ModuleBody { decls } }) = List.fromFoldable $ join (map declToTokens decls)
-
--- todo: make failure smarter?
-getAllDeclarations :: String -> List.List String
-getAllDeclarations s = case parseModule s of
-  ParseSucceeded cst -> moduleToDeclarations cst
-  ParseSucceededWithErrors cst _ -> moduleToDeclarations cst
-  ParseFailed _ -> List.Nil
-
-replaceSingleDeclaration :: String -> String -> String
-replaceSingleDeclaration body toReplace = either (const body) identity do
-  rx <- Regex.regex ("(?<![a-zA-Z0-9_']+)(" <> toReplace <> ")(?![a-zA-Z0-9_']+)") noFlags
-  pure $ Regex.replace rx (toReplace <> "___w4g") body
-
--- | Takes a list of terms to replace and a list of lines containing those terms
--- | and returns the lines with the replacements.
-replaceAllDeclarations :: String -> List.List String -> String
-replaceAllDeclarations = foldl replaceSingleDeclaration
-
-type MangledEngine = { engineHead :: String, engineBody :: String }
-
-mangleEngine :: String -> MangledEngine
-mangleEngine s = { engineHead, engineBody }
-  where
-  { head, body } = headAndBody s
-  engineHead = intercalate "\n" (removeModuleDeclaration head)
-  allDeclarations = getAllDeclarations s
-  engineBody = replaceAllDeclarations (intercalate "\n" body) allDeclarations
 
 type MangledWagged = { waggedHead :: String, waggedBody :: String }
 
@@ -512,26 +453,57 @@ mangleWagged s = { waggedHead, waggedBody }
   waggedHead = intercalate "\n" (removeModuleDeclaration head)
   waggedBody = intercalate "\n" body
 
+{-
+          const tmpl = fs.readFileSync("src/EngineTemplate.purs").toString();
+          const fi = fs.readFileSync("src/Wagged.purs").toString();
+          fs.writeFileSync(
+            "src/Engine.purs",
+            "module Engine where\n" +
+              allBefore("-- stopPrelude", [], tmpl.split(/\r\n|\n|\r/))
+                .slice(1)
+                .join("\n") +
+              fi.split(/\r\n|\n|\r/).slice(1).join("\n")
+          );
+
+-}
+
+allBefore :: String -> List.List String -> List.List String
+allBefore = go List.Nil where
+  go l _ List.Nil = l
+  go l s (List.Cons a b)
+    | a == s = l
+    | otherwise = go (l <> pure a) s b
+
+rebuildEngine ::
+  DocumentUri ->
+  DocumentUri -> 
+  DocumentUri ->
+  Aff Unit
+rebuildEngine engineTemplateUri engineUri waggedUri = do
+  tmpl <- gulpFile engineTemplateUri
+  fi <- gulpFile waggedUri
+  writeFile engineUri
+    $ intercalate "\n"
+      $ [ "module Engine where" ] <>
+              (Array.drop 1 $ Array.fromFoldable $ allBefore "-- stopPrelude"  (List.fromFoldable $  lines tmpl))  <>
+              (Array.drop 1 $ lines fi)
+
 -- | Rebuilds the gopher, which is the actual file used for audio rendering
 rebuildGopher ::
   DocumentUri ->
   DocumentUri ->
-  DocumentUri ->
   Aff Unit
-rebuildGopher engineUri waggedUri gopherUri = do
-  engineText <- gulpFile engineUri
-  let { engineHead, engineBody } = mangleEngine engineText
+rebuildGopher waggedUri gopherUri = do
   waggedText <- gulpFile waggedUri
   let { waggedHead, waggedBody } = mangleWagged waggedText
   writeFile gopherUri
     $ intercalate "\n"
       [ "module Gopher where"
       , "import Hack(cont___w444g)"
-      , engineHead
+      , "import Engine as Ennnnggggginnnneeeeee"
       , waggedHead
-      , engineBody
       , waggedBody
-      , "w_4_4_gg_ = cont___w444g graph___w4g control graph"
+      , "w_4_4_gg_ = cont___w444g Ennnnggggginnnneeeeee.wagsi wagsi"
       ]
 
 -- | Puts event handlers
@@ -613,12 +585,16 @@ handleEvents config conn state documents logError = do
       (\idx -> do
         let
           pathToFile = String.take idx uriPath
+          engineTemplateUri = DocumentUri (pathToFile <> "EngineTemplate.purs")
           engineUri = DocumentUri (pathToFile <> "Engine.purs")
           gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
         liftEffect $ info conn "WAGS :: Recompiling Gopher"
-        rebuildGopher engineUri uri gopherUri
+        rebuildGopher uri gopherUri
         rebuildAndSendDiagnostics config conn state logError uri
-        rebuildAndSendDiagnostics config conn state logError gopherUri)
+        rebuildAndSendDiagnostics config conn state logError gopherUri
+        rebuildEngine engineTemplateUri engineUri uri
+        rebuildAndSendDiagnostics config conn state logError engineUri
+        )
       (String.indexOf (String.Pattern "Wagged.purs") uriPath)
 
 handleConfig ::
