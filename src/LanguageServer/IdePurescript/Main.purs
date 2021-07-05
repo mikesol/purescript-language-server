@@ -66,8 +66,7 @@ import Node.FS.Sync as FSSync
 import Node.Path (resolve)
 import Node.Process as Process
 import PscIde.Command (RebuildError(..))
-import PureScript.CST (RecoveredParserResult(..), parseModule)
-import PureScript.CST.Types as CST
+
 
 defaultServerState :: ServerState
 defaultServerState = ServerState
