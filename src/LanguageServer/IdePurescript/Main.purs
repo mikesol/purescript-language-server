@@ -66,6 +66,8 @@ import Node.FS.Sync as FSSync
 import Node.Path (resolve)
 import Node.Process as Process
 import PscIde.Command (RebuildError(..))
+import PureScript.CST (RecoveredParserResult(..), parseModule)
+import PureScript.CST.Types as CST
 
 defaultServerState :: ServerState
 defaultServerState = ServerState
@@ -419,17 +421,17 @@ writeFile (DocumentUri uri) text = liftEffect do
   asFile <- uri2path uri
   FSSync.writeTextFile Encoding.UTF8 asFile text
 
-{-canBeModuleOrImport :: String -> Boolean
+canBeModuleOrImport :: String -> Boolean
 canBeModuleOrImport s =
   s == ""
     || String.take 1 s == " "
     || String.take 2 s == "--"
     || String.take 6 s == "module"
-    || String.take 6 s == "import"-}
+    || String.take 6 s == "import"
 
 type HeadAndBody = { head :: List.List String, body :: List.List String }
 
-{-headAndBody :: String -> HeadAndBody
+headAndBody :: String -> HeadAndBody
 headAndBody s = go List.Nil split
   where
   split = List.fromFoldable $ lines s
@@ -440,16 +442,16 @@ headAndBody s = go List.Nil split
     | otherwise = { head, body: (List.Cons a b) }
 
 removeModuleDeclaration :: List.List String -> List.List String
-removeModuleDeclaration = List.filter (\s -> String.take 6 s /= "module")-}
+removeModuleDeclaration = List.filter (\s -> String.take 6 s /= "module")
 
 type MangledWagged = { waggedHead :: String, waggedBody :: String }
-{-
+
 mangleWagged :: String -> MangledWagged
 mangleWagged s = { waggedHead, waggedBody }
   where
   { head, body } = headAndBody s
   waggedHead = intercalate "\n" (removeModuleDeclaration head)
-  waggedBody = intercalate "\n" body-}
+  waggedBody = intercalate "\n" body
 
 {-
           const tmpl = fs.readFileSync("src/EngineTemplate.purs").toString();
@@ -487,7 +489,7 @@ rebuildEngine engineTemplateUri engineUri waggedUri = do
               (Array.drop 1 $ lines fi)
 
 -- | Rebuilds the gopher, which is the actual file used for audio rendering
-{-rebuildGopher ::
+rebuildGopher ::
   DocumentUri ->
   DocumentUri ->
   Aff Unit
@@ -502,7 +504,7 @@ rebuildGopher waggedUri gopherUri = do
       , waggedHead
       , waggedBody
       , "w_4_4_gg_ = cont___w444g Ennnnggggginnnneeeeee.wagsi wagsi"
-      ]-}
+      ]
 
 -- | Puts event handlers
 handleEvents ::
@@ -585,11 +587,11 @@ handleEvents config conn state documents logError = do
           pathToFile = String.take idx uriPath
           engineTemplateUri = DocumentUri (pathToFile <> "EngineTemplate.purs")
           engineUri = DocumentUri (pathToFile <> "Engine.purs")
-          --gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
-        liftEffect $ info conn "WAGS :: Recompiling Wagged"
-        -- rebuildGopher uri gopherUri
+          gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
+        liftEffect $ info conn "WAGS :: Recompiling Gopher"
+        rebuildGopher uri gopherUri
         rebuildAndSendDiagnostics config conn state logError uri
-        -- rebuildAndSendDiagnostics config conn state logError gopherUri
+        rebuildAndSendDiagnostics config conn state logError gopherUri
         rebuildEngine engineTemplateUri engineUri uri
         rebuildAndSendDiagnostics config conn state logError engineUri
         )
