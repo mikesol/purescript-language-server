@@ -5,7 +5,7 @@ import Prelude
 import Control.Monad.Except (runExcept)
 import Control.Promise (Promise)
 import Control.Promise as Promise
-import Data.Array (length, (!!), (\\))
+import Data.Array (length, replicate, (!!), (\\))
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..), either)
@@ -28,6 +28,7 @@ import Effect.Aff.AVar (AVar)
 import Effect.Aff.AVar as AVar
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
+import Effect.Random (random, randomInt)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Foreign (Foreign, unsafeToForeign)
@@ -420,52 +421,6 @@ writeFile (DocumentUri uri) text = liftEffect do
   asFile <- uri2path uri
   FSSync.writeTextFile Encoding.UTF8 asFile text
 
-canBeModuleOrImport :: String -> Boolean
-canBeModuleOrImport s =
-  s == ""
-    || String.take 1 s == " "
-    || String.take 2 s == "--"
-    || String.take 6 s == "module"
-    || String.take 6 s == "import"
-
-type HeadAndBody = { head :: List.List String, body :: List.List String }
-
-headAndBody :: String -> HeadAndBody
-headAndBody s = go List.Nil split
-  where
-  split = List.fromFoldable $ lines s
-  go :: List.List String -> List.List String -> HeadAndBody
-  go head List.Nil = { head, body: List.Nil }
-  go head (List.Cons a b)
-    | canBeModuleOrImport a = go (head <> pure a) b
-    | otherwise = { head, body: (List.Cons a b) }
-
-removeModuleDeclaration :: List.List String -> List.List String
-removeModuleDeclaration = List.filter (\s -> String.take 6 s /= "module")
-
-type MangledWagged = { waggedHead :: String, waggedBody :: String }
-
-mangleWagged :: String -> MangledWagged
-mangleWagged s = { waggedHead, waggedBody }
-  where
-  { head, body } = headAndBody s
-  waggedHead = intercalate "\n" (removeModuleDeclaration head)
-  waggedBody = intercalate "\n" body
-
-{-
-          const tmpl = fs.readFileSync("src/EngineTemplate.purs").toString();
-          const fi = fs.readFileSync("src/Wagged.purs").toString();
-          fs.writeFileSync(
-            "src/Engine.purs",
-            "module Engine where\n" +
-              allBefore("-- stopPrelude", [], tmpl.split(/\r\n|\n|\r/))
-                .slice(1)
-                .join("\n") +
-              fi.split(/\r\n|\n|\r/).slice(1).join("\n")
-          );
-
--}
-
 allBefore :: String -> List.List String -> List.List String
 allBefore = go List.Nil where
   go l _ List.Nil = l
@@ -490,19 +445,17 @@ rebuildEngine engineTemplateUri engineUri waggedUri = do
 -- | Rebuilds the gopher, which is the actual file used for audio rendering
 rebuildGopher ::
   DocumentUri ->
-  DocumentUri ->
   Aff Unit
-rebuildGopher waggedUri gopherUri = do
-  waggedText <- gulpFile waggedUri
-  let { waggedHead, waggedBody } = mangleWagged waggedText
+rebuildGopher gopherUri = do
+  nonce <- liftEffect $ (traverse (const $ randomInt 0 9) (replicate 64 unit))
   writeFile gopherUri
     $ intercalate "\n"
       [ "module Gopher where"
       , "import Hack(cont___w444g)"
       , "import Engine as Ennnnggggginnnneeeeee"
-      , waggedHead
-      , waggedBody
-      , "w_4_4_gg_ = cont___w444g Ennnnggggginnnneeeeee.wagsi wagsi"
+      , "import Wagged as Wagggggggeeeeeddddddd"
+      , "nonce = \"" <> show nonce <> "\" :: String"
+      , "w_4_4_gg_ = cont___w444g Ennnnggggginnnneeeeee.wagsi Wagggggggeeeeeddddddd.wagsi"
       ]
 
 -- | Puts event handlers
@@ -579,22 +532,40 @@ handleEvents config conn state documents logError = do
   onDidSaveDocument documents \{ document } -> launchAffLog do
     let uri@(DocumentUri uriPath) = getUri document
     
-    maybe
-      (rebuildAndSendDiagnostics config conn state logError uri)
-      (\idx -> do
-        let
-          pathToFile = String.take idx uriPath
-          engineTemplateUri = DocumentUri (pathToFile <> "EngineTemplate.purs")
-          engineUri = DocumentUri (pathToFile <> "Engine.purs")
-          gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
-        liftEffect $ info conn "WAGS :: Recompiling Gopher"
-        rebuildGopher uri gopherUri
-        rebuildAndSendDiagnostics config conn state logError uri
-        rebuildAndSendDiagnostics config conn state logError gopherUri
-        rebuildEngine engineTemplateUri engineUri uri
-        rebuildAndSendDiagnostics config conn state logError engineUri
-        )
-      (String.indexOf (String.Pattern "Wagged.purs") uriPath)
+    let
+      waggedIdx = String.indexOf (String.Pattern "Wagged.purs") uriPath
+      roomIdx = do
+        void $ String.indexOf (String.Pattern ".purs") uriPath
+        String.indexOf (String.Pattern "Room") uriPath
+      o
+        | Just idx <- roomIdx = do
+          let
+            pathToFile = String.take idx uriPath
+            engineTemplateUri = DocumentUri (pathToFile <> "EngineTemplate.purs")
+            waggedUri = DocumentUri (pathToFile <> "Wagged.purs")
+            engineUri = DocumentUri (pathToFile <> "Engine.purs")
+            gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
+          liftEffect $ info conn "WAGS :: Recompiling Gopher"
+          rebuildGopher gopherUri
+          rebuildAndSendDiagnostics config conn state logError uri
+          rebuildAndSendDiagnostics config conn state logError waggedUri
+          rebuildAndSendDiagnostics config conn state logError gopherUri
+          rebuildEngine engineTemplateUri engineUri uri
+          rebuildAndSendDiagnostics config conn state logError engineUri  
+        | Just idx <- roomIdx = do
+          let
+            pathToFile = String.take idx uriPath
+            engineTemplateUri = DocumentUri (pathToFile <> "EngineTemplate.purs")
+            engineUri = DocumentUri (pathToFile <> "Engine.purs")
+            gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
+          liftEffect $ info conn "WAGS :: Recompiling Gopher"
+          rebuildGopher gopherUri
+          rebuildAndSendDiagnostics config conn state logError uri
+          rebuildAndSendDiagnostics config conn state logError gopherUri
+          rebuildEngine engineTemplateUri engineUri uri
+          rebuildAndSendDiagnostics config conn state logError engineUri
+        | otherwise = rebuildAndSendDiagnostics config conn state logError uri
+    o
 
 handleConfig ::
   Ref Foreign ->

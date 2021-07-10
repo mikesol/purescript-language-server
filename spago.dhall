@@ -42,6 +42,7 @@ You can edit this file as you like.
   , "profunctor"
   , "psc-ide"
   , "psci-support"
+  , "random"
   , "refs"
   , "strings"
   , "stringutils"
