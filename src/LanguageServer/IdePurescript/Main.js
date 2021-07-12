@@ -4,3 +4,7 @@ exports.uri2path = function (s) {
     return url.fileURLToPath(s);
   };
 };
+
+exports.putInPast = function(s) {
+  return s.replaceAll("LiveCodeHere", "PutThePastBehindUs");
+}

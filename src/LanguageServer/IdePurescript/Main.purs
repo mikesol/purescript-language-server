@@ -428,35 +428,30 @@ allBefore = go List.Nil where
     | a == s = l
     | otherwise = go (l <> pure a) s b
 
-rebuildEngine ::
-  DocumentUri ->
+buildInPast ::
   DocumentUri -> 
   DocumentUri ->
   Aff Unit
-rebuildEngine engineTemplateUri engineUri waggedUri = do
-  tmpl <- gulpFile engineTemplateUri
-  fi <- gulpFile waggedUri
-  writeFile engineUri
-    $ intercalate "\n"
-      $ [ "module Engine where" ] <>
-              (Array.drop 1 $ Array.fromFoldable $ allBefore "-- stopPrelude"  (List.fromFoldable $  lines tmpl))  <>
-              (Array.drop 1 $ lines fi)
+buildInPast pastUri curUri = gulpFile curUri >>= writeFile pastUri <<< putInPast
 
 -- | Rebuilds the gopher, which is the actual file used for audio rendering
 rebuildGopher ::
   DocumentUri ->
   Aff Unit
 rebuildGopher gopherUri = do
-  nonce <- liftEffect $ (traverse (const $ randomInt 0 9) (replicate 64 unit))
+  nonce' <- liftEffect $ (traverse (const $ randomInt 0 9) (replicate 64 unit))
+  let nonce = fold (map show nonce')
   writeFile gopherUri
     $ intercalate "\n"
-      [ "module Gopher where"
-      , "import Hack(cont___w444g)"
-      , "import Engine as Ennnnggggginnnneeeeee"
-      , "import Wagged as Wagggggggeeeeeddddddd"
-      , "nonce = \"" <> show nonce <> "\" :: String"
-      , "w_4_4_gg_ = cont___w444g Ennnnggggginnnneeeeee.wagsi Wagggggggeeeeeddddddd.wagsi"
+      [ "module WAGSI.PutThePastBehindUs.Gopher where"
+      , "import WAGSI.Plumbing.Hack (cont___w444g)"
+      , "import WAGSI.PutThePastBehindUs.Wagged as Passsssssssttttttt"
+      , "import WAGSI.LiveCodeHere.Wagged as Wagggggggeeeeeddddddd"
+      , "nonce = \"" <> nonce <> "\" :: String"
+      , "w_4_4_gg_ = cont___w444g Passsssssssttttttt.wagsi Wagggggggeeeeeddddddd.wagsi"
       ]
+
+foreign import putInPast :: String -> String
 
 -- | Puts event handlers
 handleEvents ::
@@ -533,37 +528,41 @@ handleEvents config conn state documents logError = do
     let uri@(DocumentUri uriPath) = getUri document
     
     let
-      waggedIdx = String.indexOf (String.Pattern "Wagged.purs") uriPath
+      waggedIdx = do
+        void $ String.indexOf (String.Pattern "LiveCodeHere") uriPath
+        String.indexOf (String.Pattern "Wagged.purs") uriPath
       roomIdx = do
         void $ String.indexOf (String.Pattern ".purs") uriPath
+        void $ String.indexOf (String.Pattern "LiveCodeHere") uriPath
         String.indexOf (String.Pattern "Room") uriPath
       o
         | Just idx <- roomIdx = do
           let
             pathToFile = String.take idx uriPath
-            engineTemplateUri = DocumentUri (pathToFile <> "EngineTemplate.purs")
             waggedUri = DocumentUri (pathToFile <> "Wagged.purs")
-            engineUri = DocumentUri (pathToFile <> "Engine.purs")
-            gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
+            pastRoom = DocumentUri ((putInPast pathToFile) <> "Room.purs")
+            pastWagged = DocumentUri ((putInPast pathToFile) <> "Wagged.purs")
+            gopherUri = DocumentUri ((putInPast pathToFile) <> "Gopher.purs")
           liftEffect $ info conn "WAGS :: Recompiling Gopher"
           rebuildGopher gopherUri
           rebuildAndSendDiagnostics config conn state logError uri
           rebuildAndSendDiagnostics config conn state logError waggedUri
           rebuildAndSendDiagnostics config conn state logError gopherUri
-          rebuildEngine engineTemplateUri engineUri uri
-          rebuildAndSendDiagnostics config conn state logError engineUri  
-        | Just idx <- roomIdx = do
+          buildInPast pastRoom uri
+          buildInPast pastWagged waggedUri
+          rebuildAndSendDiagnostics config conn state logError pastRoom  
+          rebuildAndSendDiagnostics config conn state logError pastWagged  
+        | Just idx <- waggedIdx = do
           let
             pathToFile = String.take idx uriPath
-            engineTemplateUri = DocumentUri (pathToFile <> "EngineTemplate.purs")
-            engineUri = DocumentUri (pathToFile <> "Engine.purs")
-            gopherUri = DocumentUri (pathToFile <> "Gopher.purs")
+            pastWagged = DocumentUri ((putInPast pathToFile) <> "Wagged.purs")
+            gopherUri = DocumentUri ((putInPast pathToFile) <> "Gopher.purs")
           liftEffect $ info conn "WAGS :: Recompiling Gopher"
           rebuildGopher gopherUri
           rebuildAndSendDiagnostics config conn state logError uri
           rebuildAndSendDiagnostics config conn state logError gopherUri
-          rebuildEngine engineTemplateUri engineUri uri
-          rebuildAndSendDiagnostics config conn state logError engineUri
+          buildInPast pastWagged uri
+          rebuildAndSendDiagnostics config conn state logError pastWagged
         | otherwise = rebuildAndSendDiagnostics config conn state logError uri
     o
 
