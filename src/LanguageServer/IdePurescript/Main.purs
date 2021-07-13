@@ -540,9 +540,9 @@ handleEvents config conn state documents logError = do
           let
             pathToFile = String.take idx uriPath
             waggedUri = DocumentUri (pathToFile <> "Wagged.purs")
-            pastRoom = DocumentUri ((putInPast pathToFile) <> "Room.purs")
-            pastWagged = DocumentUri ((putInPast pathToFile) <> "Wagged.purs")
-            gopherUri = DocumentUri ((putInPast pathToFile) <> "Gopher.purs")
+            pastRoom = DocumentUri (putInPast pathToFile <> String.drop idx uriPath)
+            pastWagged = DocumentUri (putInPast pathToFile <> "Wagged.purs")
+            gopherUri = DocumentUri (putInPast pathToFile <> "Gopher.purs")
           liftEffect $ info conn "WAGS :: Recompiling Gopher"
           rebuildGopher gopherUri
           rebuildAndSendDiagnostics config conn state logError uri
@@ -555,8 +555,8 @@ handleEvents config conn state documents logError = do
         | Just idx <- waggedIdx = do
           let
             pathToFile = String.take idx uriPath
-            pastWagged = DocumentUri ((putInPast pathToFile) <> "Wagged.purs")
-            gopherUri = DocumentUri ((putInPast pathToFile) <> "Gopher.purs")
+            pastWagged = DocumentUri (putInPast pathToFile <> "Wagged.purs")
+            gopherUri = DocumentUri (putInPast pathToFile <> "Gopher.purs")
           liftEffect $ info conn "WAGS :: Recompiling Gopher"
           rebuildGopher gopherUri
           rebuildAndSendDiagnostics config conn state logError uri
