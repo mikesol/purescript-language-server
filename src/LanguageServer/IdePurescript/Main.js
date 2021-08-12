@@ -6,5 +6,5 @@ exports.uri2path = function (s) {
 };
 
 exports.putInPast = function(s) {
-  return s.replaceAll("LiveCodeHere", "PutThePastBehindUs");
+  return s.replace(new RegExp("LiveCodeHere", "g"), "PutThePastBehindUs");
 }
