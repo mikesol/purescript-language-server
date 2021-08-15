@@ -7,4 +7,8 @@ exports.uri2path = function (s) {
 
 exports.putInPast = function(s) {
   return s.replace(new RegExp("LiveCodeHere", "g"), "PutThePastBehindUs");
-}
+};
+
+exports.version = function () {
+  return require('./package.json').version;
+};

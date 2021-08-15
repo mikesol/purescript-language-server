@@ -83,6 +83,9 @@ preludeModule = getString "preludeModule" "Prelude"
 fastRebuild :: ConfigFn Boolean
 fastRebuild = getBoolean "fastRebuild" true
 
+buildOpenedFiles :: ConfigFn Boolean
+buildOpenedFiles = getBoolean "buildOpenedFiles" false
+
 -- | Output directory - if specified, passed to purs, otherwise no argument is passed (purs default to 'output')
 outputDirectory :: ConfigFn (Maybe String)
 outputDirectory = getConfigMaybe readString "outputDirectory"
@@ -90,9 +93,6 @@ outputDirectory = getConfigMaybe readString "outputDirectory"
 -- | Effective output directory (taking account of purs default)
 effectiveOutputDirectory :: ConfigFn String
 effectiveOutputDirectory = fromMaybe "output" <<< ignoreEmpty <<< outputDirectory
-
-polling :: ConfigFn Boolean
-polling = getBoolean "polling" false
 
 addPscPackageSources :: ConfigFn Boolean
 addPscPackageSources = getBoolean "addPscPackageSources" false
@@ -107,6 +107,20 @@ logLevel = getString "pscIdelogLevel" "" >>> case _ of
     "debug" -> Just Debug
     "perf" -> Just Perf
     _ -> Nothing
+
+data Formatter
+    = NoFormatter
+    | Purty
+    | PursTidy
+    | Pose
+
+formatter :: ConfigFn Formatter
+formatter = getString "formatter" "" >>> case _ of
+    "none" -> NoFormatter
+    "purty" -> Purty
+    "purs-tidy" -> PursTidy
+    "pose" -> Pose
+    _ -> Purty
 
 codegenTargets :: ConfigFn (Maybe (Array CodegenTarget))
 codegenTargets =  getConfigMaybe (readArray >=> traverse readString) "codegenTargets" >>>
